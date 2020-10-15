@@ -1,0 +1,189 @@
+## Flexible Funktionen, die unterschiedliche Ratingskalen verarbeiten koennen
+sub array<int, 2> init_rating_control(array<string, 1>& scale_names, array<string, 1>& items, array<int, 1>& start_values, array<int, 1>& max_values, array<int, 1>& tick_pos_x, array<int, 1>& tick_x_distance, array<int, 1>& ind_x_tick_part)
+begin
+	int n_scales = scale_names.count();
+	int n_items = items.count();
+	int n_ratings = n_scales * n_items;	
+	array<int> rating_control[7][n_ratings];
+	
+	int row = 1;
+		
+	loop int item = 1
+	until item > n_items
+	begin
+			
+		loop int type_scale = 1
+		until type_scale > n_scales
+		begin
+			rating_control[1][row] = item;
+			rating_control[2][row] = type_scale;
+			rating_control[3][row] = start_values[type_scale];
+			rating_control[4][row] = max_values[type_scale];
+			rating_control[5][row] = tick_pos_x[type_scale];
+			rating_control[6][row] = tick_x_distance[type_scale];
+			rating_control[7][row] = ind_x_tick_part[type_scale];
+				
+			row = row + 1;
+			type_scale = type_scale + 1;
+		end;
+			
+		item = item + 1;
+	end;
+	
+	return rating_control
+end;
+
+sub array<string, 2> init_results_store(array<string, 1>& scale_names, array<string, 1>& items)
+begin
+
+	int n_scales = scale_names.count();
+	int n_items = items.count();
+	int n_rows = n_scales * n_items;
+	
+	array<string> column_names[6] = {"Item", "Skala", "Wertung", "Beginn", "Ende", "Dauer"};	
+	int n_columns = column_names.count();
+
+	array<string> results_store[n_columns][n_rows];
+	
+	int row = 1;
+		
+	loop int item = 1
+	until item > n_items
+	begin
+			
+		loop int type_scale = 1
+		until type_scale > n_scales
+		begin
+			results_store[1][row] = items[item];
+			results_store[2][row] = scale_names[type_scale];
+				
+			row = row + 1;
+			type_scale = type_scale + 1;
+		end;
+			
+		item = item + 1;
+	end;
+	
+	return results_store
+end;
+
+sub int return_rating(picture scale_picture, trial rating_trial, int time_out, int input_system, int start_value, int max_value, int tick_start, int tick_distance, int ind_x_tick_part)
+begin
+	array<string> key_values [2][3] = {{"1", "2", "3"}, {"y", "x", "c"}};
+	
+	int rating = start_value;
+	string key_down = key_values[input_system][1];
+	string key_okay = key_values[input_system][2];
+	string key_up = key_values[input_system][3];
+	string key;
+	stimulus_event event = rating_trial.get_stimulus_event(1);
+	string rating_code = event.event_code();
+	
+	int tick_x_pos = tick_start;
+	int end_time = clock.time() + time_out;
+	
+	scale_picture.set_part_x(ind_x_tick_part, tick_x_pos);
+	event.set_event_code(rating_code + " " + string(rating));
+	rating_trial.present();
+		
+	loop
+	until false
+	begin
+
+		if input_system == 1 then
+			if response_manager.response_count() > 0 then
+				key = string(response_manager.last_response());
+			elseif clock.time() > end_time then
+				tick_x_pos = tick_start;
+				break;	
+			else 
+				continue
+			end;
+		elseif input_system == 2 then
+			system_keyboard.set_max_length(1);
+			key = system_keyboard.get_input(); 
+		end;		
+		
+		if key == key_down && rating > 1 then
+			rating = rating - 1;
+			tick_x_pos = tick_x_pos - tick_distance;
+		elseif key == key_up && rating < max_value then
+			rating = rating + 1;
+			tick_x_pos = tick_x_pos + tick_distance;
+		elseif key == key_okay || clock.time() > end_time then
+			tick_x_pos = tick_start;
+			break;
+		end;
+		
+		scale_picture.set_part_x(ind_x_tick_part, tick_x_pos);		
+	   event.set_event_code(rating_code + " " + string(rating));
+		rating_trial.present();
+	end;
+	return rating
+end;
+
+sub handle_its(array<picture, 1>& scale_pictures, array<bitmap, 1>& items, trial rating_trial, int rating_nr, int time_out, int input_system, array<int, 2>& rating_control, array<string, 2>& results_table, picture_part placeholder)
+begin		
+	picture scale_pic = scale_pictures[rating_control[2][rating_nr]];
+	stimulus_event scale_event = rating_trial.get_stimulus_event(1);
+	if items.count() >= 1 then
+		bitmap item = items[rating_control[1][rating_nr]];
+		#scale_pic.set_part(1, item); #replaces the item part with current item
+		scale_pic.set_part(1, placeholder);  #replace item part with placeholder
+	end;
+	int start_value = rating_control[3][rating_nr];
+	int max_value = rating_control[4][rating_nr];
+	int tick_start = rating_control[5][rating_nr];
+	int tick_distance = rating_control[6][rating_nr];
+	int ind_x_tick_part = rating_control[7][rating_nr];
+	
+	int value;
+	int start_time = clock.time();
+	
+	scale_event.set_stimulus(scale_pic);
+	scale_event.set_event_code(results_table[1][rating_nr] + " " + results_table[2][rating_nr]);
+	
+	value = return_rating(scale_pic, rating_trial, time_out, input_system, start_value, max_value, tick_start, tick_distance, ind_x_tick_part);
+	
+	int end_time = clock.time();
+	
+	results_table[3][rating_nr] = string(value);
+	results_table[4][rating_nr] = string(start_time);
+	results_table[5][rating_nr] = string(end_time);
+	results_table[6][rating_nr] = string(end_time - start_time);
+end;
+
+
+sub write_table(string file_name, array<string, 2>& table, int n_rows, int n_columns)
+begin
+	output_file file = new output_file;
+	file.open_append(file_name);
+
+	
+	file.print("Item\tSkala\tWertung\tBeginn\tEnde\tDauer\n");
+
+	loop int row = 1
+	until row > n_rows
+	begin
+		
+		loop int col = 1
+		until col > n_columns
+		begin
+			if col < n_columns then
+				file.print(table[col][row]);
+				file.print("\t");
+			else
+				file.print(table[col][row]);
+				file.print("\n");
+			end;			
+			col = col + 1;
+		end;
+		
+		row = row + 1;
+	end;
+	
+	file.close();
+end;
+
+
+
